@@ -60,6 +60,7 @@ For more information, please refer to <http://unlicense.org/>
 #include <sys/select.h>
 #include <fnmatch.h>
 #include <glob.h>
+#include <db.h>
 
 #include "pigpio.h"
 
@@ -865,6 +866,11 @@ Assumes two counters per block.  Each counter 4 * 16 (16^4=65536)
 
 /* typedef ------------------------------------------------------- */
 
+typedef struct {
+  uint32_t colour;
+  uint32_t delay;
+} colour_t;
+
 typedef void (*callbk_t) ();
 
 typedef struct
@@ -1195,6 +1201,10 @@ static volatile uint32_t pi_mem_flag  = 0x0C;
 static int libInitialised = 0;
 
 /* initialise every gpioInitialise */
+
+static DB *dbp;
+const char* dbName = "/tmp/access.db";
+static int db_open = 0;
 
 static struct timespec libStarted;
 
@@ -8002,6 +8012,11 @@ static void initReleaseResources(void)
    gpioStats.dmaInitCbsCount = 0;
 
    numSockNetAddr = 0;
+
+   if (db_open) {
+     (void)dbp->close(dbp, 0);
+     db_open = 0;
+   }
 }
 
 int initInitialise(void)
@@ -8014,6 +8029,13 @@ int initInitialise(void)
    pthread_attr_t pthAttr;
 
    DBG(DBG_STARTUP, "");
+
+   db_open = 1;
+   if (!db_create(&dbp, NULL, 0)) {
+     if (dbp->open(dbp, NULL, dbName, "", DB_BTREE, DB_CREATE, 0664) != 0) {
+       db_open = 0;
+     }
+   }
 
    waveClockInited = 0;
    PWMClockInited = 0;
@@ -10922,6 +10944,9 @@ int bbSPIXfer(
 
 int addPWM(uint32_t gpios, uint32_t vals, uint32_t time)
 {
+    DBT key, data;
+    uint32_t max = 0;
+
     uint8_t rgpio = gpios&0xff;
     uint8_t ggpio = gpios>>8&0xff;
     uint8_t bgpio = gpios>>16&0xff;
@@ -10933,6 +10958,38 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t time)
     printf("ADDPWM: %x, %x, %x\n", rgpio, ggpio, bgpio);
     printf("ADDPWM: %x, %x, %x\n", rval, gval, bval);
     printf("ADDPWM: %x\n", time);
+
+    if (db_open) {
+      printf("db_open\n");
+        /* get max */
+        memset(&key, 0, sizeof(key));
+	memset(&data, 0, sizeof(data));
+	key.data = (char*)"max";
+	key.size = 3;
+	data.size = sizeof(uint32_t);
+	max = 0;
+	if (!dbp->get(dbp, NULL, &key, &data, 0)) {
+	  max = *(uint32_t*)data.data;
+	}
+	/* add */
+	max++;
+        memset(&key, 0, sizeof(key));
+	memset(&data, 0, sizeof(data));
+	key.data = (uint32_t*)&max;
+	key.size = sizeof(uint32_t);
+	if (!dbp->put(dbp, NULL, &key, &data, 0)) {
+	    /* save max */
+	    memset(&key, 0, sizeof(key));
+	    memset(&data, 0, sizeof(data));
+	    key.data = (char*)"max";
+	    key.size = 3;
+	    data.data = (uint32_t*)&max;
+	    data.size = sizeof(uint32_t);
+	    if (dbp->put(dbp, NULL, &key, &data, 0)) {
+	        // TODO: Handle error
+	    }
+	}
+    }
 
     return 0;
 }
