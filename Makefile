@@ -10,7 +10,7 @@ STRIP        = $(CROSS_PREFIX)strip
 SHLIB        = $(CC) -shared
 STRIPLIB     = $(STRIP) --strip-unneeded
 
-CFLAGS	+= -O3 -Wall -pthread
+CFLAGS	+= -O0 -Wall -pthread
 
 LIB1     = libpigpio.so
 OBJ1     = pigpio.o command.o
@@ -25,11 +25,11 @@ LIB      = $(LIB1) $(LIB2) $(LIB3)
 
 ALL     = $(LIB) x_pigpio x_pigpiod_if x_pigpiod_if2 pig2vcd pigpiod pigs
 
-LL1      = -L. -lpigpio -pthread -lrt
+LL1      = -L. -lpigpio -pthread -lrt -ldb
 
-LL2      = -L. -lpigpiod_if -pthread -lrt
+LL2      = -L. -lpigpiod_if -pthread -lrt -ldb
 
-LL3      = -L. -lpigpiod_if2 -pthread -lrt
+LL3      = -L. -lpigpiod_if2 -pthread -lrt -ldb
 
 prefix = /usr/local
 exec_prefix = $(prefix)
