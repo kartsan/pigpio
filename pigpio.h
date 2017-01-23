@@ -909,6 +909,8 @@ typedef void *(gpioThreadFunc_t) (void *);
 
 #define PI_EVENT_BSC 31
 
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t time);
+
 /*F*/
 int gpioInitialise(void);
 /*D

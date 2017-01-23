@@ -2231,7 +2231,8 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
          break;
 
       case PI_CMD_ADDPWM:
-	printf("ADDPWM: %d, %d\n", p[1], p[2]);
+	memcpy(&p[4], buf, 4);
+	res = addPWM(p[1], p[2], p[4]);	
 	break;
 	
       case PI_CMD_READ: res = gpioRead(p[1]); break;
@@ -10918,6 +10919,23 @@ int bbSPIXfer(
 }
 
 /*-------------------------------------------------------------------------*/
+
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t time)
+{
+    uint8_t rgpio = gpios&0xff;
+    uint8_t ggpio = gpios>>8&0xff;
+    uint8_t bgpio = gpios>>16&0xff;
+
+    uint8_t rval  = vals&0xff;
+    uint8_t gval  = vals>>8&0xff;
+    uint8_t bval  = vals>>16&0xff;
+
+    printf("ADDPWM: %x, %x, %x\n", rgpio, ggpio, bgpio);
+    printf("ADDPWM: %x, %x, %x\n", rval, gval, bval);
+    printf("ADDPWM: %x\n", time);
+
+    return 0;
+}
 
 int gpioSerialReadOpen(unsigned gpio, unsigned baud, unsigned data_bits)
 {
