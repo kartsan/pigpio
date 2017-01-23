@@ -2230,6 +2230,10 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
          }
          break;
 
+      case PI_CMD_ADDPWM:
+	printf("ADDPWM: %d, %d\n", p[1], p[2]);
+	break;
+	
       case PI_CMD_READ: res = gpioRead(p[1]); break;
 
       case PI_CMD_SERVO:

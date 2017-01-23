@@ -156,6 +156,7 @@ cmdInfo_t cmdInfo[]=
 
    {PI_CMD_PWM,   "P",     121, 0}, // gpioPWM
    {PI_CMD_PWM,   "PWM",   121, 0}, // gpioPWM
+   {PI_CMD_ADDPWM,   "ADDPWM",   121, 0}, // gpioPWM
 
    {PI_CMD_READ,  "R",     112, 2}, // gpioRead
    {PI_CMD_READ,  "READ",  112, 2}, // gpioRead

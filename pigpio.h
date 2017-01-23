@@ -6054,6 +6054,8 @@ PARAMS*/
 #define PI_CMD_EVM   115
 #define PI_CMD_EVT   116
 
+#define PI_CMD_ADDPWM  200
+
 /*DEF_E*/
 
 /*
