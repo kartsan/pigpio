@@ -867,8 +867,9 @@ Assumes two counters per block.  Each counter 4 * 16 (16^4=65536)
 /* typedef ------------------------------------------------------- */
 
 typedef struct {
-  uint32_t colour;
-  uint32_t delay;
+  uint32_t gpios;
+  uint32_t cols;
+  uint16_t delay;
 } colour_t;
 
 typedef void (*callbk_t) ();
@@ -10942,10 +10943,11 @@ int bbSPIXfer(
 
 /*-------------------------------------------------------------------------*/
 
-int addPWM(uint32_t gpios, uint32_t vals, uint32_t time)
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t idtime)
 {
+    DBC* dbcp;
     DBT key, data;
-    uint32_t max = 0;
+    colour_t colour;
 
     uint8_t rgpio = gpios&0xff;
     uint8_t ggpio = gpios>>8&0xff;
@@ -10955,41 +10957,40 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t time)
     uint8_t gval  = vals>>8&0xff;
     uint8_t bval  = vals>>16&0xff;
 
+    uint16_t id   = idtime>>8&0xff | idtime&0xff;
+    uint16_t time = idtime>>24&0xff | idtime>>16&0xff;
+
+    colour.cols = vals;
+    colour.gpios = gpios;
+    colour.delay = time;
+
     printf("ADDPWM: %x, %x, %x\n", rgpio, ggpio, bgpio);
     printf("ADDPWM: %x, %x, %x\n", rval, gval, bval);
-    printf("ADDPWM: %x\n", time);
+    printf("ADDPWM: %x, %x\n", time, id);
 
     if (db_open) {
-      printf("db_open\n");
-        /* get max */
-        memset(&key, 0, sizeof(key));
-	memset(&data, 0, sizeof(data));
-	key.data = (char*)"max";
-	key.size = 3;
-	data.size = sizeof(uint32_t);
-	max = 0;
-	if (!dbp->get(dbp, NULL, &key, &data, 0)) {
-	  max = *(uint32_t*)data.data;
-	}
 	/* add */
-	max++;
         memset(&key, 0, sizeof(key));
 	memset(&data, 0, sizeof(data));
-	key.data = (uint32_t*)&max;
-	key.size = sizeof(uint32_t);
+	key.data = (uint16_t*)&id;
+	key.size = sizeof(uint16_t);
+	data.data = (colour_t*)&colour;
+	data.size = sizeof(colour_t);
 	if (!dbp->put(dbp, NULL, &key, &data, 0)) {
-	    /* save max */
-	    memset(&key, 0, sizeof(key));
-	    memset(&data, 0, sizeof(data));
-	    key.data = (char*)"max";
-	    key.size = 3;
-	    data.data = (uint32_t*)&max;
-	    data.size = sizeof(uint32_t);
-	    if (dbp->put(dbp, NULL, &key, &data, 0)) {
-	        // TODO: Handle error
-	    }
+	    // TODO: Handle error
 	}
     }
+
+#if 0
+    /* Acquire a cursor for the database. */
+    if (!dbp->cursor(dbp, NULL, &dbcp, 0)) {
+        memset(&key, 0, sizeof(key));
+	memset(&data, 0, sizeof(data));
+	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
+	    printf("value: %x\n", ((colour_t*)data.data)->cols);
+	}
+    }
+#endif
 
     return 0;
 }
