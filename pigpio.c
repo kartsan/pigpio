@@ -2250,6 +2250,10 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
 	res = delPWM(p[1]);
 	break;
 
+      case PI_CMD_DELALL:
+	res = delAll();
+	break;
+
       case PI_CMD_READ: res = gpioRead(p[1]); break;
 
       case PI_CMD_SERVO:
@@ -11029,6 +11033,25 @@ int delPWM(uint32_t id)
 #endif
 
     return 0;
+}
+
+int delAll()
+{
+   if (db_open) {
+     (void)dbp->close(dbp, 0);
+     db_open = 0;
+   }
+
+   remove(dbName);
+
+   db_open = 1;
+   if (!db_create(&dbp, NULL, 0)) {
+     if (dbp->open(dbp, NULL, dbName, "", DB_BTREE, DB_CREATE, 0664) != 0) {
+       db_open = 0;
+     }
+   }
+
+   return 0;
 }
 
 int gpioSerialReadOpen(unsigned gpio, unsigned baud, unsigned data_bits)
