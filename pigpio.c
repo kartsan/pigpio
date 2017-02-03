@@ -2246,6 +2246,10 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
 	res = addPWM(p[1], p[2], p[4]);	
 	break;
 	
+      case PI_CMD_DELPWM:
+	res = delPWM(p[1]);
+	break;
+
       case PI_CMD_READ: res = gpioRead(p[1]); break;
 
       case PI_CMD_SERVO:
@@ -10943,7 +10947,7 @@ int bbSPIXfer(
 
 /*-------------------------------------------------------------------------*/
 
-int addPWM(uint32_t gpios, uint32_t vals, uint32_t idtime)
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay)
 {
     DBC* dbcp;
     DBT key, data;
@@ -10957,16 +10961,18 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t idtime)
     uint8_t gval  = vals>>8&0xff;
     uint8_t bval  = vals>>16&0xff;
 
-    uint16_t id   = idtime>>8&0xff | idtime&0xff;
-    uint16_t time = idtime>>24&0xff | idtime>>16&0xff;
+    uint16_t id   = iddelay&0xffff;
+    uint16_t time = iddelay>>16&0xffff;
 
     colour.cols = vals;
     colour.gpios = gpios;
     colour.delay = time;
 
+#if 0
     printf("ADDPWM: %x, %x, %x\n", rgpio, ggpio, bgpio);
     printf("ADDPWM: %x, %x, %x\n", rval, gval, bval);
-    printf("ADDPWM: %x, %x\n", time, id);
+    printf("ADDPWM: %d, %d\n", time, id);
+#endif
 
     if (db_open) {
 	/* add */
@@ -10987,7 +10993,37 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t idtime)
         memset(&key, 0, sizeof(key));
 	memset(&data, 0, sizeof(data));
 	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
-	    printf("value: %x\n", ((colour_t*)data.data)->cols);
+	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+	}
+    }
+#endif
+
+    return 0;
+}
+
+int delPWM(uint32_t id)
+{
+    DBC* dbcp;
+    DBT key, data;
+    uint16_t id16 = id&0xffff;
+
+    if (db_open) {
+	/* add */
+        memset(&key, 0, sizeof(key));
+	key.data = (uint16_t*)&id16;
+	key.size = sizeof(uint16_t);
+	if (!dbp->del(dbp, NULL, &key, 0)) {
+	  // TODO: Handle error
+	}
+    }
+
+#if 0
+    /* Acquire a cursor for the database. */
+    if (!dbp->cursor(dbp, NULL, &dbcp, 0)) {
+        memset(&key, 0, sizeof(key));
+	memset(&data, 0, sizeof(data));
+	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
+	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
 	}
     }
 #endif
