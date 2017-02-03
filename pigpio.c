@@ -1262,6 +1262,9 @@ static volatile uint32_t scriptEventBits  = 0;
 
 static volatile int runState = PI_STARTING;
 
+static int dbChanged        = 0;
+
+static int pthDbRunning     = 0;
 static int pthAlertRunning  = 0;
 static int pthFifoRunning   = 0;
 static int pthSocketRunning = 0;
@@ -1291,6 +1294,7 @@ static gpioTimer_t      gpioTimer  [PI_MAX_TIMER+1];
 
 static int pwmFreq[PWM_FREQS];
 
+static pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t spi_main_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t spi_aux_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1357,6 +1361,7 @@ static volatile gpioCfg_t gpioCfg =
 static unsigned bufferBlocks; /* number of blocks in buffer */
 static unsigned bufferCycles; /* number of cycles */
 
+static pthread_t pthDb;
 static pthread_t pthAlert;
 static pthread_t pthFifo;
 static pthread_t pthSocket;
@@ -6130,6 +6135,45 @@ static void alertWdogCheck(gpioSample_t *sample, int numSamples)
    }
 }
 
+static void * pthDbThread(void *x)
+{
+   DBC* dbcp;
+   DBT key, data;
+   colour_t colour;
+   int db_changed = 0;
+
+   /* don't start until DMA started */
+   spinWhileStarting();
+
+   while (1) {
+#if 0
+     /* Acquire a cursor for the database. */
+     pthread_mutex_lock(&db_mutex);
+     if (!dbp->cursor(dbp, NULL, &dbcp, 0)) {
+       memset(&key, 0, sizeof(key));
+       memset(&data, 0, sizeof(data));
+       while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
+	 printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+       }
+     }
+     pthread_mutex_unlock(&db_mutex);
+#endif
+     pthread_mutex_lock(&db_mutex);
+     db_changed = dbChanged;
+     dbChanged = 0;
+     pthread_mutex_unlock(&db_mutex);
+
+     if (db_changed) {
+       printf("Changed.\n");
+       db_changed = 0;
+     }
+
+     usleep(1000);
+   }
+
+   return 0;
+}
+
 static void * pthAlertThread(void *x)
 {
    struct timespec req, rem;
@@ -7747,6 +7791,7 @@ static void initClearGlobals(void)
    nFilterBits = 0;
    wdogBits    = 0;
 
+   pthDbRunning     = 0;
    pthAlertRunning  = 0;
    pthFifoRunning   = 0;
    pthSocketRunning = 0;
@@ -7878,6 +7923,14 @@ static void initReleaseResources(void)
          pthread_join(gpioTimer[i].pthId, NULL);
          gpioTimer[i].running = 0;
       }
+   }
+
+
+   if (pthDbRunning)
+   {
+      pthread_cancel(pthDb);
+      pthread_join(pthDb, NULL);
+      pthDbRunning = 0;
    }
 
    if (pthAlertRunning)
@@ -8132,6 +8185,11 @@ int initInitialise(void)
       SOFT_ERROR(PI_INIT_FAILED, "pthread_create alert failed (%m)");
 
    pthAlertRunning = 1;
+
+   if (pthread_create(&pthDb, &pthAttr, pthDbThread, &i))
+         SOFT_ERROR(PI_INIT_FAILED, "pthread_create db failed (%m)");
+
+   pthDbRunning = 1;
 
    if (!(gpioCfg.ifFlags & PI_DISABLE_FIFO_IF))
    {
@@ -10987,7 +11045,9 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay)
 	data.data = (colour_t*)&colour;
 	data.size = sizeof(colour_t);
 	if (!dbp->put(dbp, NULL, &key, &data, 0)) {
-	    // TODO: Handle error
+	    pthread_mutex_lock(&db_mutex);
+	    dbChanged = 1;
+	    pthread_mutex_unlock(&db_mutex);
 	}
     }
 
@@ -11017,7 +11077,9 @@ int delPWM(uint32_t id)
 	key.data = (uint16_t*)&id16;
 	key.size = sizeof(uint16_t);
 	if (!dbp->del(dbp, NULL, &key, 0)) {
-	  // TODO: Handle error
+	    pthread_mutex_lock(&db_mutex);
+	    dbChanged = 1;
+	    pthread_mutex_unlock(&db_mutex);
 	}
     }
 
@@ -11050,6 +11112,10 @@ int delAll()
        db_open = 0;
      }
    }
+
+   pthread_mutex_lock(&db_mutex);
+   dbChanged = 1;
+   pthread_mutex_unlock(&db_mutex);
 
    return 0;
 }
