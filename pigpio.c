@@ -872,6 +872,12 @@ typedef struct {
   uint16_t delay;
 } colour_t;
 
+typedef struct colour_entry_t_ {
+  uint16_t id;
+  colour_t colour;
+  struct colour_entry_t_ *next;
+} colour_entry_t;
+
 typedef void (*callbk_t) ();
 
 typedef struct
@@ -1203,6 +1209,7 @@ static int libInitialised = 0;
 
 /* initialise every gpioInitialise */
 
+static colour_entry_t *dbll = NULL;
 static DB *dbp;
 const char* dbName = "/tmp/access.db";
 static int db_open = 0;
@@ -1498,6 +1505,68 @@ static void closeOrphanedNotifications(int slot, int fd);
 
 
 /* ======================================================================= */
+
+static colour_entry_t *
+db_make_entry(uint16_t id, colour_t* entry)
+{
+    colour_entry_t *mt =
+      (colour_entry_t *)calloc(sizeof(colour_entry_t), 1);
+    if (!mt) {
+      return NULL;
+    }
+    memset(mt, 0, sizeof(colour_entry_t));
+    mt->id = id;
+    if (entry) {
+      memcpy(&mt->colour, entry, sizeof(colour_t));
+    }
+    mt->next = NULL;
+    return mt;
+}
+
+static void
+db_destroy_ll()
+{
+    if (dbll) {
+      colour_entry_t *node = dbll;
+      while (node) {
+	colour_entry_t *prev = node;
+	node = node->next;
+	free(prev);
+      }
+      dbll = NULL;
+    }
+}
+
+static void
+db_read()
+{
+    DBC* dbcp;
+    DBT key, data;
+    colour_t colour;
+
+    db_destroy_ll();
+    dbll = db_make_entry(0, NULL); /* head */
+    colour_entry_t *current = dbll;
+
+    if (db_open && dbll) {
+      /* Acquire a cursor for the database. */
+      pthread_mutex_lock(&db_mutex);
+      if (!dbp->cursor(dbp, NULL, &dbcp, 0)) {
+	memset(&key, 0, sizeof(key));
+	memset(&data, 0, sizeof(data));
+	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
+	  colour_entry_t *entry = db_make_entry(*(uint16_t*)key.data,
+						(colour_t*)data.data);
+	  if (entry) {
+	    current->next = entry;
+	    current = entry;
+	    //	    printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+	  }
+	}
+      }
+      pthread_mutex_unlock(&db_mutex);
+    }
+}
 
 int myScriptNameValid(char *name)
 {
@@ -6141,30 +6210,55 @@ static void * pthDbThread(void *x)
    DBT key, data;
    colour_t colour;
    int db_changed = 0;
+   uint32_t delay = 0;
+   colour_entry_t *current = NULL;
 
    /* don't start until DMA started */
    spinWhileStarting();
 
+   db_read();
+   if (dbll)
+     current = dbll->next;
    while (1) {
-#if 0
-     /* Acquire a cursor for the database. */
-     pthread_mutex_lock(&db_mutex);
-     if (!dbp->cursor(dbp, NULL, &dbcp, 0)) {
-       memset(&key, 0, sizeof(key));
-       memset(&data, 0, sizeof(data));
-       while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
-	 printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+     if (dbll) {
+       if (delay > 0) {
+	 delay--;
+       } else {
+	 if (current) {
+	   //	   printf("current: %d, %x, %d\n", current->id, current->colour.cols, current->colour.delay);
+	   uint8_t rgpio = current->colour.gpios&0xff;
+	   uint8_t ggpio = current->colour.gpios>>8&0xff;
+	   uint8_t bgpio = current->colour.gpios>>16&0xff;
+	   uint8_t rval  = current->colour.cols&0xff;
+	   uint8_t gval  = current->colour.cols>>8&0xff;
+	   uint8_t bval  = current->colour.cols>>16&0xff;
+	   gpioPWM(rgpio, rval);
+	   gpioPWM(ggpio, gval);
+	   gpioPWM(bgpio, bval);
+	   delay = current->colour.delay;
+	   if (!delay) {
+	     /* mark this forever */
+	     current = NULL;
+	     continue;
+	   }
+	   current = current->next;
+	   if (!current) {
+	     current = dbll->next;
+	   }
+	 }
        }
      }
-     pthread_mutex_unlock(&db_mutex);
-#endif
+
      pthread_mutex_lock(&db_mutex);
      db_changed = dbChanged;
      dbChanged = 0;
      pthread_mutex_unlock(&db_mutex);
 
      if (db_changed) {
-       printf("Changed.\n");
+       current = NULL;
+       db_read();
+       if (dbll)
+	 current = dbll->next;
        db_changed = 0;
      }
 
@@ -11072,7 +11166,7 @@ int delPWM(uint32_t id)
     uint16_t id16 = id&0xffff;
 
     if (db_open) {
-	/* add */
+	/* del */
         memset(&key, 0, sizeof(key));
 	key.data = (uint16_t*)&id16;
 	key.size = sizeof(uint16_t);
