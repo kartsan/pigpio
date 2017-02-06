@@ -867,16 +867,17 @@ Assumes two counters per block.  Each counter 4 * 16 (16^4=65536)
 /* typedef ------------------------------------------------------- */
 
 typedef struct {
+  uint8_t  is_pwm;
   uint32_t gpios;
-  uint32_t cols;
+  uint32_t vals;
   uint16_t delay;
-} colour_t;
+} db_gpio_t;
 
-typedef struct colour_entry_t_ {
+typedef struct db_gpio_entry_t_ {
   uint16_t id;
-  colour_t colour;
-  struct colour_entry_t_ *next;
-} colour_entry_t;
+  db_gpio_t entry;
+  struct db_gpio_entry_t_ *next;
+} db_gpio_entry_t;
 
 typedef void (*callbk_t) ();
 
@@ -1209,7 +1210,7 @@ static int libInitialised = 0;
 
 /* initialise every gpioInitialise */
 
-static colour_entry_t *dbll = NULL;
+static db_gpio_entry_t *dbll = NULL;
 static DB *dbp;
 const char* dbName = "/tmp/access.db";
 static int db_open = 0;
@@ -1506,18 +1507,18 @@ static void closeOrphanedNotifications(int slot, int fd);
 
 /* ======================================================================= */
 
-static colour_entry_t *
-db_make_entry(uint16_t id, colour_t* entry)
+static db_gpio_entry_t *
+db_make_entry(uint16_t id, db_gpio_t* entry)
 {
-    colour_entry_t *mt =
-      (colour_entry_t *)calloc(sizeof(colour_entry_t), 1);
+    db_gpio_entry_t *mt =
+      (db_gpio_entry_t *)calloc(sizeof(db_gpio_entry_t), 1);
     if (!mt) {
       return NULL;
     }
-    memset(mt, 0, sizeof(colour_entry_t));
+    memset(mt, 0, sizeof(db_gpio_entry_t));
     mt->id = id;
     if (entry) {
-      memcpy(&mt->colour, entry, sizeof(colour_t));
+      memcpy(&mt->entry, entry, sizeof(db_gpio_t));
     }
     mt->next = NULL;
     return mt;
@@ -1527,9 +1528,9 @@ static void
 db_destroy_ll()
 {
     if (dbll) {
-      colour_entry_t *node = dbll;
+      db_gpio_entry_t *node = dbll;
       while (node) {
-	colour_entry_t *prev = node;
+	db_gpio_entry_t *prev = node;
 	node = node->next;
 	free(prev);
       }
@@ -1542,11 +1543,11 @@ db_read()
 {
     DBC* dbcp;
     DBT key, data;
-    colour_t colour;
+    db_gpio_t entry;
 
     db_destroy_ll();
     dbll = db_make_entry(0, NULL); /* head */
-    colour_entry_t *current = dbll;
+    db_gpio_entry_t *current = dbll;
 
     if (db_open && dbll) {
       /* Acquire a cursor for the database. */
@@ -1555,12 +1556,12 @@ db_read()
 	memset(&key, 0, sizeof(key));
 	memset(&data, 0, sizeof(data));
 	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
-	  colour_entry_t *entry = db_make_entry(*(uint16_t*)key.data,
-						(colour_t*)data.data);
+	  db_gpio_entry_t *entry = db_make_entry(*(uint16_t*)key.data,
+						(db_gpio_t*)data.data);
 	  if (entry) {
 	    current->next = entry;
 	    current = entry;
-	    //	    printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+	    //	    printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((db_gpio_t*)data.data)->vals);
 	  }
 	}
       }
@@ -2317,9 +2318,14 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
 
       case PI_CMD_ADDPWM:
 	memcpy(&p[4], buf, 4);
-	res = addPWM(p[1], p[2], p[4]);	
+	res = addPWM(p[1], p[2], p[4], 1);
 	break;
-	
+
+      case PI_CMD_ADDGPIO:
+	memcpy(&p[4], buf, 4);
+	res = addPWM(p[1], p[2], p[4], 0);
+	break;
+
       case PI_CMD_DELPWM:
 	res = delPWM(p[1]);
 	break;
@@ -6208,10 +6214,10 @@ static void * pthDbThread(void *x)
 {
    DBC* dbcp;
    DBT key, data;
-   colour_t colour;
+   db_gpio_t entry;
    int db_changed = 0;
    uint32_t delay = 0;
-   colour_entry_t *current = NULL;
+   db_gpio_entry_t *current = NULL;
 
    /* don't start until DMA started */
    spinWhileStarting();
@@ -6225,17 +6231,30 @@ static void * pthDbThread(void *x)
 	 delay--;
        } else {
 	 if (current) {
-	   //	   printf("current: %d, %x, %d\n", current->id, current->colour.cols, current->colour.delay);
-	   uint8_t rgpio = current->colour.gpios&0xff;
-	   uint8_t ggpio = current->colour.gpios>>8&0xff;
-	   uint8_t bgpio = current->colour.gpios>>16&0xff;
-	   uint8_t rval  = current->colour.cols&0xff;
-	   uint8_t gval  = current->colour.cols>>8&0xff;
-	   uint8_t bval  = current->colour.cols>>16&0xff;
-	   gpioPWM(rgpio, rval);
-	   gpioPWM(ggpio, gval);
-	   gpioPWM(bgpio, bval);
-	   delay = current->colour.delay;
+	   //	   printf("current: %d, %x, %d\n", current->id, current->entry.vals, current->entry.delay);
+	   uint8_t rgpio = current->entry.gpios&0xff;
+	   uint8_t ggpio = current->entry.gpios>>8&0xff;
+	   uint8_t bgpio = current->entry.gpios>>16&0xff;
+	   uint8_t rval  = current->entry.vals&0xff;
+	   uint8_t gval  = current->entry.vals>>8&0xff;
+	   uint8_t bval  = current->entry.vals>>16&0xff;
+	   //	   printf("write: (%d) %d:%d:%d = %d:%d:%d\n", current->entry.is_pwm, rgpio, ggpio, bgpio, rval, gval, bval);
+	   if (current->entry.is_pwm) {
+	     if (rgpio)
+	       gpioPWM(rgpio, rval);
+	     if (ggpio)
+	       gpioPWM(ggpio, gval);
+	     if (bgpio)
+	       gpioPWM(bgpio, bval);
+	   } else {
+	     if (rgpio)
+	       gpioWrite(rgpio, rval);
+	     if (ggpio)
+	       gpioWrite(ggpio, gval);
+	     if (bgpio)
+	       gpioWrite(bgpio, bval);
+	   }
+	   delay = current->entry.delay;
 	   if (!delay) {
 	     /* mark this forever */
 	     current = NULL;
@@ -11103,32 +11122,30 @@ int bbSPIXfer(
 
 /*-------------------------------------------------------------------------*/
 
-int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay)
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay, int is_pwm)
 {
     DBC* dbcp;
     DBT key, data;
-    colour_t colour;
+    db_gpio_t entry;
 
+#if 0
+    /* for documentation                   */
     uint8_t rgpio = gpios&0xff;
     uint8_t ggpio = gpios>>8&0xff;
     uint8_t bgpio = gpios>>16&0xff;
-
     uint8_t rval  = vals&0xff;
     uint8_t gval  = vals>>8&0xff;
     uint8_t bval  = vals>>16&0xff;
+    printf("%x:%x:%x = %x:%x:%x\n", rgpio, ggpio, bgpio, rval, gval, bval);
+#endif
 
     uint16_t id   = iddelay&0xffff;
     uint16_t time = iddelay>>16&0xffff;
-
-    colour.cols = vals;
-    colour.gpios = gpios;
-    colour.delay = time;
-
-#if 0
-    printf("ADDPWM: %x, %x, %x\n", rgpio, ggpio, bgpio);
-    printf("ADDPWM: %x, %x, %x\n", rval, gval, bval);
-    printf("ADDPWM: %d, %d\n", time, id);
-#endif
+    memset(&entry, 0, sizeof(db_gpio_t));
+    entry.vals = vals;
+    entry.gpios = gpios;
+    entry.delay = time;
+    entry.is_pwm = is_pwm;
 
     if (db_open) {
 	/* add */
@@ -11136,8 +11153,8 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay)
 	memset(&data, 0, sizeof(data));
 	key.data = (uint16_t*)&id;
 	key.size = sizeof(uint16_t);
-	data.data = (colour_t*)&colour;
-	data.size = sizeof(colour_t);
+	data.data = (db_gpio_t*)&entry;
+	data.size = sizeof(db_gpio_t);
 	if (!dbp->put(dbp, NULL, &key, &data, 0)) {
 	    pthread_mutex_lock(&db_mutex);
 	    dbChanged = 1;
@@ -11151,7 +11168,7 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay)
         memset(&key, 0, sizeof(key));
 	memset(&data, 0, sizeof(data));
 	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
-	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((db_gpio_t*)data.data)->vals);
 	}
     }
 #endif
@@ -11183,7 +11200,7 @@ int delPWM(uint32_t id)
         memset(&key, 0, sizeof(key));
 	memset(&data, 0, sizeof(data));
 	while (!dbcp->c_get(dbcp, &key, &data, DB_NEXT)) {
-	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((colour_t*)data.data)->cols);
+	  printf("key: %d, value: %x\n", *(uint16_t*)key.data, ((db_gpio_t*)data.data)->vals);
 	}
     }
 #endif

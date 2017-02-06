@@ -157,6 +157,7 @@ cmdInfo_t cmdInfo[]=
    {PI_CMD_PWM,   "P",     121, 0}, // gpioPWM
    {PI_CMD_PWM,   "PWM",   121, 0}, // gpioPWM
    {PI_CMD_ADDPWM,   "ADDPWM",   131, 0},
+   {PI_CMD_ADDPWM,   "ADDGPIO",  131, 0},
    {PI_CMD_DELPWM,   "DELPWM",   111, 0},
    {PI_CMD_DELPWM,   "DELALL",   101, 0},
 
