@@ -912,6 +912,7 @@ typedef void *(gpioThreadFunc_t) (void *);
 int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay, int is_pwm);
 int delPWM(uint32_t id);
 int delAll();
+int getAll();
 
 /*F*/
 int gpioInitialise(void);
@@ -6062,6 +6063,7 @@ PARAMS*/
 #define PI_CMD_DELPWM  201
 #define PI_CMD_DELALL  202
 #define PI_CMD_ADDGPIO 203
+#define PI_CMD_GETALL  204
 
 /*DEF_E*/
 

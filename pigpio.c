@@ -2334,6 +2334,10 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
 	res = delAll();
 	break;
 
+      case PI_CMD_GETALL:
+	res = getAll(buf);
+        break;
+
       case PI_CMD_READ: res = gpioRead(p[1]); break;
 
       case PI_CMD_SERVO:
@@ -7134,7 +7138,7 @@ static void *pthSocketThreadHandler(void *fdC)
          case PI_CMD_SPIX:
          case PI_CMD_SPIR:
          case PI_CMD_BSPIX:
-
+         case PI_CMD_GETALL:
             if (((int)p[3]) > 0)
             {
                write(sock, buf, p[3]);
@@ -11229,6 +11233,30 @@ int delAll()
    pthread_mutex_unlock(&db_mutex);
 
    return 0;
+}
+
+int getAll(char *buf)
+{
+   db_gpio_entry_t *current = NULL;
+
+   if (dbll)
+     current = dbll->next;
+
+   char *bufp = buf;
+   while (current && ((bufp - buf) < 65535)) {
+     uint32_t netint = htonl(current->entry.is_pwm << 24 | current->entry.delay);
+     memcpy(bufp, &netint, 4);
+     bufp += 4;
+     netint = htonl(current->entry.gpios);
+     memcpy(bufp, &netint, 4);
+     bufp += 4;
+     netint = htonl(current->entry.vals);
+     memcpy(bufp, &netint, 4);
+     bufp += 4;
+     current = current->next;
+   }
+
+   return bufp - buf;
 }
 
 int gpioSerialReadOpen(unsigned gpio, unsigned baud, unsigned data_bits)

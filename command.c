@@ -160,7 +160,7 @@ cmdInfo_t cmdInfo[]=
    {PI_CMD_ADDPWM,   "ADDGPIO",  131, 0},
    {PI_CMD_DELPWM,   "DELPWM",   111, 0},
    {PI_CMD_DELPWM,   "DELALL",   101, 0},
-
+   {PI_CMD_GETALL,   "GETALL",   101, 6},
    {PI_CMD_READ,  "R",     112, 2}, // gpioRead
    {PI_CMD_READ,  "READ",  112, 2}, // gpioRead
 
