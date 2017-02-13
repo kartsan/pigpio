@@ -870,6 +870,7 @@ typedef struct {
   uint8_t  is_pwm;
   uint32_t gpios;
   uint32_t vals;
+  uint32_t weights;
   uint16_t delay;
 } db_gpio_t;
 
@@ -2317,13 +2318,11 @@ static int myDoCommand(uint32_t *p, unsigned bufSize, char *buf)
          break;
 
       case PI_CMD_ADDPWM:
-	memcpy(&p[4], buf, 4);
-	res = addPWM(p[1], p[2], p[4], 1);
+	res = addPWM(p[1], p[2], (uint32_t*)buf, 1);
 	break;
 
       case PI_CMD_ADDGPIO:
-	memcpy(&p[4], buf, 4);
-	res = addPWM(p[1], p[2], p[4], 0);
+	res = addPWM(p[1], p[2], (uint32_t*)buf, 0);
 	break;
 
       case PI_CMD_DELPWM:
@@ -6242,14 +6241,17 @@ static void * pthDbThread(void *x)
 	   uint8_t rval  = current->entry.vals&0xff;
 	   uint8_t gval  = current->entry.vals>>8&0xff;
 	   uint8_t bval  = current->entry.vals>>16&0xff;
-	   //	   printf("write: (%d) %d:%d:%d = %d:%d:%d\n", current->entry.is_pwm, rgpio, ggpio, bgpio, rval, gval, bval);
+	   uint8_t rweight  = current->entry.weights&0xff;
+	   uint8_t gweight  = current->entry.weights>>8&0xff;
+	   uint8_t bweight  = current->entry.weights>>16&0xff;
+	   printf("write: (%d) %d:%d:%d = %d:%d:%d (%d:%d:%d)\n", current->entry.is_pwm, rgpio, ggpio, bgpio, rval, gval, bval, rweight, gweight, bweight);
 	   if (current->entry.is_pwm) {
 	     if (rgpio)
-	       gpioPWM(rgpio, rval);
+	       gpioPWM(rgpio, rweight * rval / 255);
 	     if (ggpio)
-	       gpioPWM(ggpio, gval);
+	       gpioPWM(ggpio, gweight * gval / 255);
 	     if (bgpio)
-	       gpioPWM(bgpio, bval);
+	       gpioPWM(bgpio, bweight * bval / 255);
 	   } else {
 	     if (rgpio)
 	       gpioWrite(rgpio, rval);
@@ -11126,13 +11128,13 @@ int bbSPIXfer(
 
 /*-------------------------------------------------------------------------*/
 
-int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay, int is_pwm)
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t *buf, int is_pwm)
 {
     DBC* dbcp;
     DBT key, data;
     db_gpio_t entry;
 
-#if 0
+#if 1
     /* for documentation                   */
     uint8_t rgpio = gpios&0xff;
     uint8_t ggpio = gpios>>8&0xff;
@@ -11143,11 +11145,14 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay, int is_pwm)
     printf("%x:%x:%x = %x:%x:%x\n", rgpio, ggpio, bgpio, rval, gval, bval);
 #endif
 
+    uint32_t iddelay = *buf;
+    uint32_t weights = *(buf + 1);
     uint16_t id   = iddelay&0xffff;
     uint16_t time = iddelay>>16&0xffff;
     memset(&entry, 0, sizeof(db_gpio_t));
     entry.vals = vals;
     entry.gpios = gpios;
+    entry.weights = weights;
     entry.delay = time;
     entry.is_pwm = is_pwm;
 
@@ -11244,13 +11249,19 @@ int getAll(char *buf)
 
    char *bufp = buf;
    while (current && ((bufp - buf) < 65535)) {
-     uint32_t netint = htonl(current->entry.is_pwm << 24 | current->entry.delay);
+     uint32_t netint = htonl(current->id);
+     memcpy(bufp, &netint, 4);
+     bufp += 4;
+     netint = htonl(current->entry.is_pwm << 24 | current->entry.delay);
      memcpy(bufp, &netint, 4);
      bufp += 4;
      netint = htonl(current->entry.gpios);
      memcpy(bufp, &netint, 4);
      bufp += 4;
      netint = htonl(current->entry.vals);
+     memcpy(bufp, &netint, 4);
+     bufp += 4;
+     netint = htonl(current->entry.weights);
      memcpy(bufp, &netint, 4);
      bufp += 4;
      current = current->next;

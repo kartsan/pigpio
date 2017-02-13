@@ -909,7 +909,7 @@ typedef void *(gpioThreadFunc_t) (void *);
 
 #define PI_EVENT_BSC 31
 
-int addPWM(uint32_t gpios, uint32_t vals, uint32_t iddelay, int is_pwm);
+int addPWM(uint32_t gpios, uint32_t vals, uint32_t *buf, int is_pwm);
 int delPWM(uint32_t id);
 int delAll();
 int getAll();
