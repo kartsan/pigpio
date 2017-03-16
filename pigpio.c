@@ -1213,7 +1213,7 @@ static int libInitialised = 0;
 
 static db_gpio_entry_t *dbll = NULL;
 static DB *dbp;
-const char* dbName = "/tmp/access.db";
+const char* dbName = "/var/lib/color.db";
 static int db_open = 0;
 
 static struct timespec libStarted;
@@ -6244,7 +6244,7 @@ static void * pthDbThread(void *x)
 	   uint8_t rweight  = current->entry.weights&0xff;
 	   uint8_t gweight  = current->entry.weights>>8&0xff;
 	   uint8_t bweight  = current->entry.weights>>16&0xff;
-	   printf("write: (%d) %d:%d:%d = %d:%d:%d (%d:%d:%d)\n", current->entry.is_pwm, rgpio, ggpio, bgpio, rval, gval, bval, rweight, gweight, bweight);
+	   //printf("write: (%d) %d:%d:%d = %d:%d:%d (%d:%d:%d)\n", current->entry.is_pwm, rgpio, ggpio, bgpio, rval, gval, bval, rweight, gweight, bweight);
 	   if (current->entry.is_pwm) {
 	     if (rgpio)
 	       gpioPWM(rgpio, rweight * rval / 255);
@@ -11134,7 +11134,7 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t *buf, int is_pwm)
     DBT key, data;
     db_gpio_t entry;
 
-#if 1
+#if 0
     /* for documentation                   */
     uint8_t rgpio = gpios&0xff;
     uint8_t ggpio = gpios>>8&0xff;
