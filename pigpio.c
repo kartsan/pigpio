@@ -11165,6 +11165,7 @@ int addPWM(uint32_t gpios, uint32_t vals, uint32_t *buf, int is_pwm)
 	data.data = (db_gpio_t*)&entry;
 	data.size = sizeof(db_gpio_t);
 	if (!dbp->put(dbp, NULL, &key, &data, 0)) {
+	    (void)dbp->sync(dbp, 0);
 	    pthread_mutex_lock(&db_mutex);
 	    dbChanged = 1;
 	    pthread_mutex_unlock(&db_mutex);
